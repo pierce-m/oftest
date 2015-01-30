@@ -28,13 +28,14 @@ import netutils
 from pcap_writer import PcapWriter
 
 have_pypcap = False
-try:
-    import pcap
-    if hasattr(pcap, "pcap"):
-        # the incompatible pylibpcap library masquerades as pcap
-        have_pypcap = True
-except:
-    pass
+# See Jira issue TSW-13
+#try:
+#    import pcap
+#    if hasattr(pcap, "pcap"):
+#        # the incompatible pylibpcap library masquerades as pcap
+#        have_pypcap = True
+#except:
+#    pass
 
 def match_exp_pkt(exp_pkt, pkt):
     """

@@ -78,11 +78,13 @@ def simple_tcp_packet(pktlen=100,
                       ip_dst='192.168.0.2',
                       ip_tos=0,
                       ip_ttl=64,
+                      ip_id=0x0001,
                       tcp_sport=1234,
                       tcp_dport=80,
                       tcp_flags="S",
                       ip_ihl=None,
-                      ip_options=False
+                      ip_options=False,
+                      with_tcp_chksum=True
                       ):
     """
     Return a simple dataplane TCP packet
@@ -98,9 +100,11 @@ def simple_tcp_packet(pktlen=100,
     @param ip_dst IP destination
     @param ip_tos IP ToS
     @param ip_ttl IP TTL
+    @param ip_id IP ID
     @param tcp_dport TCP destination port
     @param tcp_sport TCP source port
     @param tcp_flags TCP Control flags  	
+    @param with_tcp_chksum Valid TCP checksum
 
     Generates a simple TCP request.  Users
     shouldn't assume anything about this packet other than that
@@ -110,23 +114,28 @@ def simple_tcp_packet(pktlen=100,
     if MINSIZE > pktlen:
         pktlen = MINSIZE
 
+    if with_tcp_chksum:
+        tcp_hdr = scapy.TCP(sport=tcp_sport, dport=tcp_dport, flags=tcp_flags)
+    else:
+        tcp_hdr = scapy.TCP(sport=tcp_sport, dport=tcp_dport, flags=tcp_flags, chksum=0)
+
     # Note Dot1Q.id is really CFI
     if (dl_vlan_enable):
         pkt = scapy.Ether(dst=eth_dst, src=eth_src)/ \
             scapy.Dot1Q(prio=vlan_pcp, id=dl_vlan_cfi, vlan=vlan_vid)/ \
-            scapy.IP(src=ip_src, dst=ip_dst, tos=ip_tos, ttl=ip_ttl, ihl=ip_ihl)/ \
-            scapy.TCP(sport=tcp_sport, dport=tcp_dport, flags=tcp_flags)
+            scapy.IP(src=ip_src, dst=ip_dst, tos=ip_tos, ttl=ip_ttl, id=ip_id, ihl=ip_ihl)/ \
+            tcp_hdr
     else:
         if not ip_options:
             pkt = scapy.Ether(dst=eth_dst, src=eth_src)/ \
-                scapy.IP(src=ip_src, dst=ip_dst, tos=ip_tos, ttl=ip_ttl, ihl=ip_ihl)/ \
-                scapy.TCP(sport=tcp_sport, dport=tcp_dport, flags=tcp_flags)
+                scapy.IP(src=ip_src, dst=ip_dst, tos=ip_tos, ttl=ip_ttl, id=ip_id, ihl=ip_ihl)/ \
+                tcp_hdr
         else:
             pkt = scapy.Ether(dst=eth_dst, src=eth_src)/ \
-                scapy.IP(src=ip_src, dst=ip_dst, tos=ip_tos, ttl=ip_ttl, ihl=ip_ihl, options=ip_options)/ \
-                scapy.TCP(sport=tcp_sport, dport=tcp_dport, flags=tcp_flags)
+                scapy.IP(src=ip_src, dst=ip_dst, tos=ip_tos, ttl=ip_ttl, id=ip_id, ihl=ip_ihl, options=ip_options)/ \
+                tcp_hdr
 
-    pkt = pkt/("D" * (pktlen - len(pkt)))
+    pkt = pkt/("".join([chr(x) for x in xrange(pktlen - len(pkt))]))
 
     return pkt
 
@@ -193,7 +202,8 @@ def simple_udp_packet(pktlen=100,
                       udp_sport=1234,
                       udp_dport=80,
                       ip_ihl=None,
-                      ip_options=False
+                      ip_options=False,
+                      with_udp_chksum=True
                       ):
     """
     Return a simple dataplane UDP packet
@@ -211,6 +221,7 @@ def simple_udp_packet(pktlen=100,
     @param ip_ttl IP TTL
     @param udp_dport UDP destination port
     @param udp_sport UDP source port
+    @param with_udp_chksum Valid UDP checksum
 
     Generates a simple UDP packet. Users shouldn't assume anything about
     this packet other than that it is a valid ethernet/IP/UDP frame.
@@ -219,23 +230,398 @@ def simple_udp_packet(pktlen=100,
     if MINSIZE > pktlen:
         pktlen = MINSIZE
 
+    if with_udp_chksum:
+        udp_hdr = scapy.UDP(sport=udp_sport, dport=udp_dport)
+    else:
+        udp_hdr = scapy.UDP(sport=udp_sport, dport=udp_dport, chksum=0)
+
     # Note Dot1Q.id is really CFI
     if (dl_vlan_enable):
         pkt = scapy.Ether(dst=eth_dst, src=eth_src)/ \
             scapy.Dot1Q(prio=vlan_pcp, id=dl_vlan_cfi, vlan=vlan_vid)/ \
             scapy.IP(src=ip_src, dst=ip_dst, tos=ip_tos, ttl=ip_ttl, ihl=ip_ihl)/ \
-            scapy.UDP(sport=udp_sport, dport=udp_dport)
+            udp_hdr
     else:
         if not ip_options:
             pkt = scapy.Ether(dst=eth_dst, src=eth_src)/ \
                 scapy.IP(src=ip_src, dst=ip_dst, tos=ip_tos, ttl=ip_ttl, ihl=ip_ihl)/ \
-                scapy.UDP(sport=udp_sport, dport=udp_dport)
+                udp_hdr
         else:
             pkt = scapy.Ether(dst=eth_dst, src=eth_src)/ \
                 scapy.IP(src=ip_src, dst=ip_dst, tos=ip_tos, ttl=ip_ttl, ihl=ip_ihl, options=ip_options)/ \
-                scapy.UDP(sport=udp_sport, dport=udp_dport)
+                udp_hdr
 
-    pkt = pkt/("D" * (pktlen - len(pkt)))
+    pkt = pkt/("".join([chr(x) for x in xrange(pktlen - len(pkt))]))
+
+    return pkt
+
+def simple_geneve_packet(pktlen=300,
+                        eth_dst='00:01:02:03:04:05',
+                        eth_src='00:06:07:08:09:0a',
+                        dl_vlan_enable=False,
+                        vlan_vid=0,
+                        vlan_pcp=0,
+                        dl_vlan_cfi=0,
+                        ip_src='192.168.0.1',
+                        ip_dst='192.168.0.2',
+                        ip_tos=0,
+                        ip_ttl=64,
+                        ip_id=0x0001,
+                        udp_sport=1234,
+                        with_udp_chksum=True,
+                        ip_ihl=None,
+                        ip_options=False,
+			            geneve_ver=0x0,
+                        geneve_reserved = 0x0,
+                        geneve_vni=0x1234,
+			            geneve_reserved2=0x0,
+                        geneve_proto=0x6558,
+                        inner_frame = None):
+    """
+    Return a simple dataplane GENEVE packet
+
+    Supports a few parameters:
+    @param len Length of packet in bytes w/o CRC
+    @param eth_dst Destination MAC
+    @param eth_src Source MAC
+    @param dl_vlan_enable True if the packet is with vlan, False otherwise
+    @param vlan_vid VLAN ID
+    @param vlan_pcp VLAN priority
+    @param ip_src IP source
+    @param ip_dst IP destination
+    @param ip_tos IP ToS
+    @param ip_ttl IP TTL
+    @param ip_id IP ID
+    @param udp_sport UDP source port
+    @param geneve_ver version
+    @param geneve_reserved reserved field
+    @param geneve_vni GENEVE Network Identifier
+    @param geneve_reserved2 reserved field
+    @param inner_frame The inner Ethernet frame
+
+    Generates a simple VXLAN packet. Users shouldn't assume anything about
+    this packet other than that it is a valid ethernet/IP/UDP/VXLAN frame.
+    """
+
+    udp_dport = 6081 # UDP port assigned by IANA for GENEVE
+
+    if MINSIZE > pktlen:
+        pktlen = MINSIZE
+
+    if with_udp_chksum:
+        udp_hdr = scapy.UDP(sport=udp_sport, dport=udp_dport)
+    else:
+        udp_hdr = scapy.UDP(sport=udp_sport, dport=udp_dport, chksum=0)
+
+    # Note Dot1Q.id is really CFI
+    if (dl_vlan_enable):
+        pkt = scapy.Ether(dst=eth_dst, src=eth_src)/ \
+            scapy.Dot1Q(prio=vlan_pcp, id=dl_vlan_cfi, vlan=vlan_vid)/ \
+            scapy.IP(src=ip_src, dst=ip_dst, tos=ip_tos, ttl=ip_ttl, id=ip_id, ihl=ip_ihl)/ \
+            udp_hdr
+    else:
+        if not ip_options:
+            pkt = scapy.Ether(dst=eth_dst, src=eth_src)/ \
+                scapy.IP(src=ip_src, dst=ip_dst, tos=ip_tos, ttl=ip_ttl, id=ip_id, ihl=ip_ihl)/ \
+                udp_hdr
+        else:
+            pkt = scapy.Ether(dst=eth_dst, src=eth_src)/ \
+                scapy.IP(src=ip_src, dst=ip_dst, tos=ip_tos, ttl=ip_ttl, id=ip_id, ihl=ip_ihl, options=ip_options)/ \
+                udp_hdr
+
+    pkt = pkt / GENEVE(vni = geneve_vni, proto = geneve_proto )
+
+    if inner_frame:
+        pkt = pkt / inner_frame
+    else:
+        pkt = pkt / simple_tcp_packet(pktlen = pktlen - len(pkt))
+
+    return pkt
+
+def simple_vxlan_packet(pktlen=300,
+                        eth_dst='00:01:02:03:04:05',
+                        eth_src='00:06:07:08:09:0a',
+                        dl_vlan_enable=False,
+                        vlan_vid=0,
+                        vlan_pcp=0,
+                        dl_vlan_cfi=0,
+                        ip_src='192.168.0.1',
+                        ip_dst='192.168.0.2',
+                        ip_tos=0,
+                        ip_ttl=64,
+                        ip_id=0x0001,
+                        udp_sport=1234,
+                        with_udp_chksum=True,
+                        ip_ihl=None,
+                        ip_options=False,
+			vxlan_reserved1=0x000000,
+                        vxlan_vni = 0xaba,
+			vxlan_reserved2=0x00,
+                        inner_frame = None):
+    """
+    Return a simple dataplane VXLAN packet
+
+    Supports a few parameters:
+    @param len Length of packet in bytes w/o CRC
+    @param eth_dst Destination MAC
+    @param eth_src Source MAC
+    @param dl_vlan_enable True if the packet is with vlan, False otherwise
+    @param vlan_vid VLAN ID
+    @param vlan_pcp VLAN priority
+    @param ip_src IP source
+    @param ip_dst IP destination
+    @param ip_tos IP ToS
+    @param ip_ttl IP TTL
+    @param ip_id IP ID
+    @param udp_sport UDP source port
+    @param vxlan_reserved1 reserved field (3B)
+    @param vxlan_vni VXLAN Network Identifier
+    @param vxlan_reserved2 reserved field (1B)
+    @param inner_frame The inner Ethernet frame
+
+    Generates a simple VXLAN packet. Users shouldn't assume anything about
+    this packet other than that it is a valid ethernet/IP/UDP/VXLAN frame.
+    """
+
+    udp_dport = 4789 # UDP port assigned by IANA for VXLAN
+
+    if MINSIZE > pktlen:
+        pktlen = MINSIZE
+
+    if with_udp_chksum:
+        udp_hdr = scapy.UDP(sport=udp_sport, dport=udp_dport)
+    else:
+        udp_hdr = scapy.UDP(sport=udp_sport, dport=udp_dport, chksum=0)
+
+    # Note Dot1Q.id is really CFI
+    if (dl_vlan_enable):
+        pkt = scapy.Ether(dst=eth_dst, src=eth_src)/ \
+            scapy.Dot1Q(prio=vlan_pcp, id=dl_vlan_cfi, vlan=vlan_vid)/ \
+            scapy.IP(src=ip_src, dst=ip_dst, tos=ip_tos, ttl=ip_ttl, id=ip_id, ihl=ip_ihl)/ \
+            udp_hdr
+    else:
+        if not ip_options:
+            pkt = scapy.Ether(dst=eth_dst, src=eth_src)/ \
+                scapy.IP(src=ip_src, dst=ip_dst, tos=ip_tos, ttl=ip_ttl, id=ip_id, ihl=ip_ihl)/ \
+                udp_hdr
+        else:
+            pkt = scapy.Ether(dst=eth_dst, src=eth_src)/ \
+                scapy.IP(src=ip_src, dst=ip_dst, tos=ip_tos, ttl=ip_ttl, id=ip_id, ihl=ip_ihl, options=ip_options)/ \
+                udp_hdr
+
+    pkt = pkt / VXLAN(vni = vxlan_vni, reserved1 = vxlan_reserved1, reserved2 = vxlan_reserved2)
+
+    if inner_frame:
+        pkt = pkt / inner_frame
+    else:
+        pkt = pkt / simple_tcp_packet(pktlen = pktlen - len(pkt))
+
+    return pkt
+
+def simple_gre_packet(pktlen=300,
+                      eth_dst='00:01:02:03:04:05',
+                      eth_src='00:06:07:08:09:0a',
+                      dl_vlan_enable=False,
+                      vlan_vid=0,
+                      vlan_pcp=0,
+                      dl_vlan_cfi=0,
+                      ip_src='192.168.0.1',
+                      ip_dst='192.168.0.2',
+                      ip_tos=0,
+                      ip_ttl=64,
+                      ip_id=0x0001,
+                      ip_ihl=None,
+                      ip_options=False,
+                      gre_chksum_present=0,
+                      gre_routing_present=0, # begin reserved0
+                      gre_key_present=0,
+                      gre_seqnum_present=0,
+                      gre_strict_route_source=0,
+                      gre_flags=0, # end reserved0
+                      gre_version=0,
+                      gre_offset=None, # reserved1
+                      gre_key=None,
+                      gre_sequence_number=None,
+                      inner_frame=None
+                      ):
+    """
+    Return a simple dataplane GRE packet
+
+    Supports a few parameters:
+    @param len Length of packet in bytes w/o CRC
+    @param eth_dst Destination MAC
+    @param eth_src Source MAC
+    @param dl_vlan_enable True if the packet is with vlan, False otherwise
+    @param vlan_vid VLAN ID
+    @param vlan_pcp VLAN priority
+    @param ip_src IP source
+    @param ip_dst IP destination
+    @param ip_tos IP ToS
+    @param ip_ttl IP TTL
+    @param ip_id IP ID
+    @param gre_chkum_present with or without checksum
+    @param gre_routing_present
+    @param gre_key_present
+    @param gre_seqnum_present
+    @param gre_strict_route_source
+    @param gre_flags
+    @param gre_version Version
+    @param gre_offset
+    @param gre_key
+    @param gre_sequence_number
+    @param inner_frame payload of the GRE packet
+
+    Generates a simple GRE packet. Users shouldn't assume anything about
+    this packet other than that it is a valid ethernet/IP/GRE frame.
+    """
+
+    if MINSIZE > pktlen:
+        pktlen = MINSIZE
+
+    # proto (ethertype) is set by Scapy based on the payload
+    gre_hdr = scapy.GRE(chksum_present=gre_chksum_present,
+                        routing_present=gre_routing_present,
+                        key_present=gre_key_present,
+                        seqnum_present=gre_seqnum_present,
+                        strict_route_source=gre_strict_route_source,
+                        flags=gre_flags, version=gre_version,
+                        offset=gre_offset, key=gre_key,
+                        seqence_number=gre_sequence_number) # typo in Scapy
+
+    # Note Dot1Q.id is really CFI
+    if (dl_vlan_enable):
+        pkt = scapy.Ether(dst=eth_dst, src=eth_src)/ \
+            scapy.Dot1Q(prio=vlan_pcp, id=dl_vlan_cfi, vlan=vlan_vid)/ \
+            scapy.IP(src=ip_src, dst=ip_dst, tos=ip_tos, ttl=ip_ttl, id=ip_id, ihl=ip_ihl)/ \
+            gre_hdr
+    else:
+        if not ip_options:
+            pkt = scapy.Ether(dst=eth_dst, src=eth_src)/ \
+                scapy.IP(src=ip_src, dst=ip_dst, tos=ip_tos, ttl=ip_ttl, id=ip_id, ihl=ip_ihl)/ \
+                gre_hdr
+        else:
+            pkt = scapy.Ether(dst=eth_dst, src=eth_src)/ \
+                scapy.IP(src=ip_src, dst=ip_dst, tos=ip_tos, ttl=ip_ttl, id=ip_id, ihl=ip_ihl, options=ip_options)/ \
+                gre_hdr
+
+    if inner_frame:
+        pkt = pkt / inner_frame
+    else:
+        pkt = pkt / scapy.IP()
+        pkt = pkt/("D" * (pktlen - len(pkt)))
+
+    return pkt
+
+def simple_gre_erspan_packet(pktlen=300,
+                             eth_dst='00:01:02:03:04:05',
+                             eth_src='00:06:07:08:09:0a',
+                             dl_vlan_enable=False,
+                             vlan_vid=0,
+                             vlan_pcp=0,
+                             dl_vlan_cfi=0,
+                             ip_src='192.168.0.1',
+                             ip_dst='192.168.0.2',
+                             ip_tos=0,
+                             ip_ttl=64,
+                             ip_id=0x0001,
+                             ip_ihl=None,
+                             ip_options=False,
+                             gre_chksum_present=0,
+                             gre_routing_present=0, # begin reserved0
+                             gre_key_present=0,
+                             gre_seqnum_present=0,
+                             gre_strict_route_source=0,
+                             gre_flags=0, # end reserved0
+                             gre_version=0,
+                             gre_offset=None, # reserved1
+                             gre_key=None,
+                             gre_sequence_number=None,
+                             erspan_vlan=0,
+                             erspan_priority=0,
+                             erspan_direction=0,
+                             erspan_truncated=0,
+                             erspan_span_id=0,
+                             erspan_unknown7=0,
+                             inner_frame=None
+                         ):
+    """
+    Return a simple dataplane GRE/ERSPAN packet
+
+    Supports a few parameters:
+    @param len Length of packet in bytes w/o CRC
+    @param eth_dst Destination MAC
+    @param eth_src Source MAC
+    @param dl_vlan_enable True if the packet is with vlan, False otherwise
+    @param vlan_vid VLAN ID
+    @param vlan_pcp VLAN priority
+    @param ip_src IP source
+    @param ip_dst IP destination
+    @param ip_tos IP ToS
+    @param ip_ttl IP TTL
+    @param ip_id IP ID
+    @param gre_chkum_present with or without checksum
+    @param gre_routing_present
+    @param gre_key_present
+    @param gre_seqnum_present
+    @param gre_strict_route_source
+    @param gre_flags
+    @param gre_version Version
+    @param gre_offset
+    @param gre_key
+    @param gre_sequence_number
+    @param inner_frame payload of the GRE packet
+    @param erspan_vlan
+    @param erspan_priority
+    @param erspan_direction
+    @param erspan_truncated
+    @param erspan_span_id
+    @param erspan_unknown7
+
+    Generates a simple GRE/ERSPAN packet. Users shouldn't assume anything about
+    this packet other than that it is a valid ethernet/IP/GRE/ERSPAN frame.
+    """
+
+    if MINSIZE > pktlen:
+        pktlen = MINSIZE
+
+    # proto (ethertype) is set by Scapy based on the payload
+    gre_hdr = scapy.GRE(chksum_present=gre_chksum_present,
+                        routing_present=gre_routing_present,
+                        key_present=gre_key_present,
+                        seqnum_present=gre_seqnum_present,
+                        strict_route_source=gre_strict_route_source,
+                        flags=gre_flags, version=gre_version,
+                        offset=gre_offset, key=gre_key,
+                        seqence_number=gre_sequence_number) # typo in Scapy
+
+    erspan_hdr = scapy.ERSPAN(vlan = erspan_vlan,
+                              priority = erspan_priority,
+                              direction = erspan_direction,
+                              truncated = erspan_truncated,
+                              span_id = erspan_span_id,
+                              unknown7 = erspan_unknown7)
+
+    # Note Dot1Q.id is really CFI
+    if (dl_vlan_enable):
+        pkt = scapy.Ether(dst=eth_dst, src=eth_src)/ \
+            scapy.Dot1Q(prio=vlan_pcp, id=dl_vlan_cfi, vlan=vlan_vid)/ \
+            scapy.IP(src=ip_src, dst=ip_dst, tos=ip_tos, ttl=ip_ttl, id=ip_id, ihl=ip_ihl)/ \
+            gre_hdr / erspan_hdr
+    else:
+        if not ip_options:
+            pkt = scapy.Ether(dst=eth_dst, src=eth_src)/ \
+                scapy.IP(src=ip_src, dst=ip_dst, tos=ip_tos, ttl=ip_ttl, id=ip_id, ihl=ip_ihl)/ \
+                gre_hdr / erspan_hdr
+        else:
+            pkt = scapy.Ether(dst=eth_dst, src=eth_src)/ \
+                scapy.IP(src=ip_src, dst=ip_dst, tos=ip_tos, ttl=ip_ttl, id=ip_id, ihl=ip_ihl, options=ip_options)/ \
+                gre_hdr / erspan_hdr
+
+    if inner_frame:
+        pkt = pkt / inner_frame
+    else:
+        pkt = pkt / scapy.IP()
+        pkt = pkt/("D" * (pktlen - len(pkt)))
 
     return pkt
 
@@ -440,6 +826,62 @@ def simple_eth_packet(pktlen=60,
     pkt = scapy.Ether(dst=eth_dst, src=eth_src, type=eth_type)
 
     pkt = pkt/("0" * (pktlen - len(pkt)))
+
+    return pkt
+
+def simple_ip_packet(pktlen=100, 
+                     eth_dst='00:01:02:03:04:05',
+                     eth_src='00:06:07:08:09:0a',
+                     dl_vlan_enable=False,
+                     vlan_vid=0,
+                     vlan_pcp=0,
+                     dl_vlan_cfi=0,
+                     ip_src='192.168.0.1',
+                     ip_dst='192.168.0.2',
+                     ip_tos=0,
+                     ip_ttl=64,
+                     ip_id=0x0001,
+                     ip_ihl=None,
+                     ip_options=False
+                     ):
+    """
+    Return a simple dataplane IP packet
+
+    Supports a few parameters:
+    @param len Length of packet in bytes w/o CRC
+    @param eth_dst Destinatino MAC
+    @param eth_src Source MAC
+    @param dl_vlan_enable True if the packet is with vlan, False otherwise
+    @param vlan_vid VLAN ID
+    @param vlan_pcp VLAN priority
+    @param ip_src IP source
+    @param ip_dst IP destination
+    @param ip_tos IP ToS
+    @param ip_ttl IP TTL
+    @param ip_id IP ID
+
+    Generates a simple IP packet.  Users
+    shouldn't assume anything about this packet other than that
+    it is a valid ethernet/IP frame.
+    """
+
+    if MINSIZE > pktlen:
+        pktlen = MINSIZE
+
+    # Note Dot1Q.id is really CFI
+    if (dl_vlan_enable):
+        pkt = scapy.Ether(dst=eth_dst, src=eth_src)/ \
+            scapy.Dot1Q(prio=vlan_pcp, id=dl_vlan_cfi, vlan=vlan_vid)/ \
+            scapy.IP(src=ip_src, dst=ip_dst, tos=ip_tos, ttl=ip_ttl, id=ip_id, ihl=ip_ihl)
+    else:
+        if not ip_options:
+            pkt = scapy.Ether(dst=eth_dst, src=eth_src)/ \
+                scapy.IP(src=ip_src, dst=ip_dst, tos=ip_tos, ttl=ip_ttl, id=ip_id, ihl=ip_ihl)
+        else:
+            pkt = scapy.Ether(dst=eth_dst, src=eth_src)/ \
+                scapy.IP(src=ip_src, dst=ip_dst, tos=ip_tos, ttl=ip_ttl, id=ip_id, ihl=ip_ihl, options=ip_options)
+
+    pkt = pkt/("".join([chr(x) for x in xrange(pktlen - len(pkt))]))
 
     return pkt
 
@@ -1636,7 +2078,7 @@ def verify_packet(test, pkt, ofport):
     Check that an expected packet is received
     """
     logging.debug("Checking for pkt on port %r", ofport)
-    (rcv_port, rcv_pkt, pkt_time) = test.dataplane.poll(port_number=ofport, exp_pkt=str(pkt))
+    (rcv_port, rcv_pkt, pkt_time) = test.dataplane.poll(port_number=ofport, timeout=2, exp_pkt=str(pkt))
     test.assertTrue(rcv_pkt != None, "Did not receive pkt on %r" % ofport)
 
 def verify_no_packet(test, pkt, ofport):
@@ -1666,8 +2108,8 @@ def verify_no_other_packets(test):
 
 def verify_packets(test, pkt, ofports):
     """
-    Check that a packet is received on certain ports
-
+    Check that a packet is received on each of the specified ports.
+ 
     Also verifies that the packet is not received on any other ports, and that no
     other packets are received (unless --relax is in effect).
 
@@ -1683,6 +2125,28 @@ def verify_packets(test, pkt, ofports):
         else:
             verify_no_packet(test, pkt, ofport)
     verify_no_other_packets(test)
+
+def verify_packets_any(test, pkt, ofports):
+    """
+    Check that a packet is received on _any_ of the specified ports.
+
+    Also verifies that the packet is ot received on any other ports, and that no
+    other packets are received (unless --relax is in effect).
+    """
+    pkt = str(pkt)
+    received = False
+    for ofport in openflow_ports():
+        if ofport in ofports:
+            logging.debug("Checking for pkt on port %r", ofport)
+            print 'verifying packet on port {0}'.format(ofport)
+            (rcv_port, rcv_pkt, pkt_time) = test.dataplane.poll(port_number=ofport, exp_pkt=str(pkt))
+            if rcv_pkt != None:
+                received = True
+        else:
+            verify_no_packet(test, pkt, ofport)
+    verify_no_other_packets(test)
+
+    test.assertTrue(received == True, "Did not receive pkt on any of ports %r" % ofports)
 
 def verify_no_errors(ctrl):
     error, _ = ctrl.poll(ofp.OFPT_ERROR, 0)

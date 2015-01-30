@@ -160,14 +160,10 @@ class Controller(Thread):
         if self.passive:
             self.logger.info("Create/listen at " + self.host + ":" +
                              str(self.port))
-            ai = socket.getaddrinfo(self.host, self.port, socket.AF_UNSPEC,
-                                    socket.SOCK_STREAM, 0, socket.AI_PASSIVE)
-            # Use first returned addrinfo
-            (family, socktype, proto, name, sockaddr) = ai[0]
-            self.listen_socket = socket.socket(family, socktype)
+            self.listen_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self.listen_socket.setsockopt(socket.SOL_SOCKET,
                                           socket.SO_REUSEADDR, 1)
-            self.listen_socket.bind(sockaddr)
+            self.listen_socket.bind((self.host, self.port))
             self.listen_socket.listen(LISTEN_QUEUE_SIZE)
 
     def filter_packet(self, rawmsg, hdr):
@@ -593,7 +589,7 @@ class Controller(Thread):
             klass = None
         elif isinstance(exp_msg, int):
             klass = cfg_ofp.message.message.subtypes[exp_msg]
-        elif issubclass(exp_msg, loxi.OFObject):
+        elif issubclass(exp_msg, cfg_ofp.message.message):
             klass = exp_msg
         else:
             raise ValueError("Unexpected exp_msg argument %r" % exp_msg)
