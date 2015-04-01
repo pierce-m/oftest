@@ -277,7 +277,10 @@ class DataPlane(Thread):
     # If port_number is not specified yields packets from all ports.
     def packets(self, port_number=None):
         while True:
-            rcv_port_number = port_number or self.oldest_port_number()
+            if port_number is None:
+                rcv_port_number = self.oldest_port_number()
+            else:
+                rcv_port_number = port_number
 
             if rcv_port_number == None:
                 self.logger.debug("Out of packets on all ports")
@@ -313,7 +316,7 @@ class DataPlane(Thread):
         occurs, return None, None, None
         """
 
-        if exp_pkt and not port_number:
+        if exp_pkt and (port_number is None):
             self.logger.warn("Dataplane poll with exp_pkt but no port number")
 
         # Retrieve the packet. Returns (port number, packet, time).
