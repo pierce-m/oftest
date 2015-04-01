@@ -21,7 +21,6 @@ import oftest.dataplane as dataplane
 #
 ################################################################
 
-#import pd_thrift.bfn_pd_rpc as bfn_pd_rpc
 from thrift.transport import TSocket
 from thrift.transport import TTransport
 from thrift.protocol import TBinaryProtocol
