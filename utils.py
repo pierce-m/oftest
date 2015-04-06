@@ -30,3 +30,12 @@ def ipv4Addr_to_i32(addr):
     res = 0
     for b in byte_array: res = res * 256 + b
     return uint_to_i32(res)
+
+def stringify_macAddr(addr):
+    return ':'.join('%02x' % byte_to_u(x) for x in addr)
+
+def i32_to_ipv4Addr(addr):
+    return socket.inet_ntoa(struct.pack("!I", addr))
+
+def ipv6Addr_to_string(addr):
+    return (str(socket.inet_pton(socket.AF_INET6, addr)))
