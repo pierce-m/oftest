@@ -24,6 +24,7 @@ import oftest.dataplane as dataplane
 from thrift.transport import TSocket
 from thrift.transport import TTransport
 from thrift.protocol import TBinaryProtocol
+from thrift.protocol import TMultiplexedProtocol
 
 
 class ThriftBaseTest(unittest.TestCase):
@@ -38,9 +39,12 @@ class ThriftBaseTest(unittest.TestCase):
         logging.info("** END TEST CASE " + str(self))
 
 class ThriftInterface(ThriftBaseTest):
-    def __init__(self, p4_pd_client_module_name):
+    def __init__(self, p4_name):
         ThriftBaseTest.__init__(self)
-        self.client_module = importlib.import_module(p4_pd_client_module_name)
+        self.p4_name = p4_name
+        self.p4_client_module = importlib.import_module(".".join(["p4_pd_rpc", p4_name]))
+        self.mc_client_module = importlib.import_module(".".join(["mc_pd_rpc", "mc"]))
+        self.conn_mgr_client_module = importlib.import_module(".".join(["conn_mgr_pd_rpc", "conn_mgr"]))
 
     def setUp(self):
         ThriftBaseTest.setUp(self)
@@ -48,9 +52,15 @@ class ThriftInterface(ThriftBaseTest):
         # Set up thrift client and contact server
         self.transport = TSocket.TSocket('localhost', 9090)
         self.transport = TTransport.TBufferedTransport(self.transport)
-        self.protocol = TBinaryProtocol.TBinaryProtocol(self.transport)
+        bprotocol = TBinaryProtocol.TBinaryProtocol(self.transport)
 
-        self.client = self.client_module.Client(self.protocol)
+        self.mc_protocol = TMultiplexedProtocol.TMultiplexedProtocol(bprotocol, "mc")
+        self.conn_mgr_protocol = TMultiplexedProtocol.TMultiplexedProtocol(bprotocol, "conn_mgr")
+        self.p4_protocol = TMultiplexedProtocol.TMultiplexedProtocol(bprotocol, self.p4_name)
+
+        self.client = self.p4_client_module.Client(self.p4_protocol)
+        self.mc = self.mc_client_module.Client(self.mc_protocol)
+        self.conn_mgr = self.conn_mgr_client_module.Client(self.conn_mgr_protocol)
         self.transport.open()
 
     def tearDown(self):
@@ -63,8 +73,8 @@ class ThriftInterfaceDataPlane(ThriftInterface):
     """
     Root class that sets up the thrift interface and dataplane
     """
-    def __init__(self, p4_pd_client_module_name):
-        ThriftInterface.__init__(self, p4_pd_client_module_name)
+    def __init__(self, p4_name):
+        ThriftInterface.__init__(self, p4_name)
 
     def setUp(self):
         ThriftInterface.setUp(self)
