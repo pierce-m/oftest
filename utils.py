@@ -21,6 +21,10 @@ def bytes_to_string(byte_array):
     form = 'B' * len(byte_array)
     return struct.pack(form, *byte_array)
 
+def string_to_bytes(string):
+    form = 'B' * len(string)
+    return list(struct.unpack(form, string))
+
 def macAddr_to_string(addr):
     byte_array = [int(b, 16) for b in addr.split(':')]
     return bytes_to_string(byte_array)
