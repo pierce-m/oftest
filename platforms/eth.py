@@ -19,7 +19,7 @@ def platform_config_update(config):
     # Default to a veth configuration compatible with the reference switch
     if not port_map:
         max_port_cnt = 288
-        port_count = 8
+        port_count = 9
         device_id = 0
         print "eth.py: device id is ", device_id
         base_if_index = 1

@@ -338,6 +338,76 @@ def simple_geneve_packet(pktlen=300,
 
     return pkt
 
+def simple_nvgre_packet(pktlen=300,
+                      eth_dst='00:01:02:03:04:05',
+                      eth_src='00:06:07:08:09:0a',
+                      dl_vlan_enable=False,
+                      vlan_vid=0,
+                      vlan_pcp=0,
+                      dl_vlan_cfi=0,
+                      ip_src='192.168.0.1',
+                      ip_dst='192.168.0.2',
+                      ip_tos=0,
+                      ip_ttl=64,
+                      ip_id=0x0001,
+                      ip_ihl=None,
+                      ip_options=False,
+                      nvgre_version=0,
+                      nvgre_tni=None,
+                      inner_frame=None
+                      ):
+    """
+    Return a simple dataplane GRE packet
+
+    Supports a few parameters:
+    @param len Length of packet in bytes w/o CRC
+    @param eth_dst Destination MAC
+    @param eth_src Source MAC
+    @param dl_vlan_enable True if the packet is with vlan, False otherwise
+    @param vlan_vid VLAN ID
+    @param vlan_pcp VLAN priority
+    @param ip_src IP source
+    @param ip_dst IP destination
+    @param ip_tos IP ToS
+    @param ip_ttl IP TTL
+    @param ip_id IP ID
+    @param nvgre_version Version
+    @param nvgre_tni
+    @param inner_frame payload of the GRE packet
+
+    Generates a simple GRE packet. Users shouldn't assume anything about
+    this packet other than that it is a valid ethernet/IP/NVGRE frame.
+    """
+
+    if MINSIZE > pktlen:
+        pktlen = MINSIZE
+
+    nvgre_hdr = scapy.NVGRE(vsid=nvgre_tni)
+
+    # Note Dot1Q.id is really CFI
+    if (dl_vlan_enable):
+        pkt = scapy.Ether(dst=eth_dst, src=eth_src)/ \
+            scapy.Dot1Q(prio=vlan_pcp, id=dl_vlan_cfi, vlan=vlan_vid)/ \
+            scapy.IP(src=ip_src, dst=ip_dst, tos=ip_tos, ttl=ip_ttl, id=ip_id, ihl=ip_ihl)/ \
+            nvgre_hdr
+    else:
+        if not ip_options:
+            pkt = scapy.Ether(dst=eth_dst, src=eth_src)/ \
+                scapy.IP(src=ip_src, dst=ip_dst, tos=ip_tos, ttl=ip_ttl, id=ip_id, ihl=ip_ihl)/ \
+                nvgre_hdr
+        else:
+            pkt = scapy.Ether(dst=eth_dst, src=eth_src)/ \
+                scapy.IP(src=ip_src, dst=ip_dst, tos=ip_tos, ttl=ip_ttl, id=ip_id, ihl=ip_ihl, options=ip_options)/ \
+                nvgre_hdr
+
+    if inner_frame:
+        pkt = pkt / inner_frame
+    else:
+        pkt = pkt / scapy.IP()
+        pkt = pkt/("D" * (pktlen - len(pkt)))
+
+    return pkt
+
 def simple_vxlan_packet(pktlen=300,
                         eth_dst='00:01:02:03:04:05',
                         eth_src='00:06:07:08:09:0a',
@@ -885,7 +955,53 @@ def simple_ip_packet(pktlen=100,
 
     return pkt
 
-def qinq_tcp_packet(pktlen=100, 
+def simple_ip_only_packet(pktlen=100,
+                     ip_src='192.168.0.1',
+                     ip_dst='192.168.0.2',
+                     ip_tos=0,
+                     ip_ttl=64,
+                     ip_id=0x0001,
+                     ip_ihl=None,
+                     ip_options=False,
+                     tcp_sport=1234,
+                     tcp_dport=80,
+                     tcp_flags="S",
+                     with_tcp_chksum=True
+                     ):
+    """
+    Return a simple dataplane IP packet
+
+    Supports a few parameters:
+    @param len Length of packet in bytes w/o CRC
+    @param ip_src IP source
+    @param ip_dst IP destination
+    @param ip_tos IP ToS
+    @param ip_ttl IP TTL
+    @param ip_id IP ID
+
+    Generates a simple IP packet.  Users
+    shouldn't assume anything about this packet other than that
+    it is a valid IP frame.
+    """
+
+    if MINSIZE > pktlen:
+        pktlen = MINSIZE
+
+    if with_tcp_chksum:
+        tcp_hdr = scapy.TCP(sport=tcp_sport, dport=tcp_dport, flags=tcp_flags)
+    else:
+        tcp_hdr = scapy.TCP(sport=tcp_sport, dport=tcp_dport, flags=tcp_flags, chksum=0)
+
+    if not ip_options:
+        pkt = scapy.IP(src=ip_src, dst=ip_dst, tos=ip_tos, ttl=ip_ttl, id=ip_id, ihl=ip_ihl) / tcp_hdr
+    else:
+        pkt = scapy.IP(src=ip_src, dst=ip_dst, tos=ip_tos, ttl=ip_ttl, id=ip_id, ihl=ip_ihl, options=ip_options) / tcp_hdr
+
+    pkt = pkt/("".join([chr(x) for x in xrange(pktlen - len(pkt))]))
+
+    return pkt
+
+def qinq_tcp_packet(pktlen=100,
                     eth_dst='00:01:02:03:04:05',
                     eth_src='00:06:07:08:09:0a',
                     dl_vlan_outer=20,
@@ -938,6 +1054,64 @@ def qinq_tcp_packet(pktlen=100,
           scapy.TCP(sport=tcp_sport, dport=tcp_dport)
 
     pkt = pkt/("D" * (pktlen - len(pkt)))
+
+    return pkt
+
+def simple_mpls_packet(pktlen=300,
+                       eth_dst='00:01:02:03:04:05',
+                       eth_src='00:06:07:08:09:0a',
+                       dl_vlan_enable=False,
+                       vlan_vid=0,
+                       vlan_pcp=0,
+                       mpls_type=0x8847,
+                       mpls_tags=[],
+                       dl_vlan_cfi=0,
+                       inner_frame = None):
+    """
+    Return a simple dataplane MPLS packet
+
+    Supports a few parameters:
+    @param len Length of packet in bytes w/o CRC
+    @param eth_dst Destination MAC
+    @param eth_src Source MAC
+    @param dl_vlan_enable True if the packet is with vlan, False otherwise
+    @param vlan_vid VLAN ID
+    @param vlan_pcp VLAN priority
+    @param mpls_tags mpls tag stack
+    @param inner_frame The inner frame
+
+    Generates a simple MPLS packet. Users shouldn't assume anything about
+    this packet other than that it is a valid ethernet/IP/UDP/VXLAN frame.
+    """
+
+    if MINSIZE > pktlen:
+        pktlen = MINSIZE
+
+    pkt = scapy.Ether(dst=eth_dst, src=eth_src)
+    pkt[Ether].setfieldval('type', mpls_type)
+
+    if (dl_vlan_enable):
+        pkt / scapy.Dot1Q(prio=vlan_pcp, id=dl_vlan_cfi, vlan=vlan_vid)
+        pkt[Dot1Q].setfieldval('type', mpls_type)
+
+    mpls_tags = list(mpls_tags)
+    while len(mpls_tags):
+        tag = mpls_tags.pop(0)
+        mpls = MPLS()
+        if 'label' in tag:
+            mpls.label = tag['label']
+        if 'tc' in tag:
+            mpls.cos = tag['tc']
+        if 'ttl' in tag:
+            mpls.ttl = tag['ttl']
+        if 's' in tag:
+            mpls.s = tag['s']
+        pkt = pkt / mpls
+
+    if inner_frame:
+        pkt = pkt / inner_frame
+    else:
+        pkt = pkt / simple_tcp_packet(pktlen = pktlen - len(pkt))
 
     return pkt
 
