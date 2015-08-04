@@ -94,6 +94,8 @@ config_default = {
     "enable_vxlan"       : False,
     "enable_erspan"      : False,
     "enable_geneve"      : False,
+    "enable_mpls"        : False,
+    "enable_nvgre"       : False,
 
     # Other configuration
     "port_map"           : {},
@@ -220,6 +222,10 @@ prefixing them with the '^' character.
                       help="Enable GENEVE")
     group.add_option("--enable-erspan", action="store_true",
                       help="Enable ERSPAN")
+    group.add_option("--enable-mpls", action="store_true",
+                      help="Enable MPLS")
+    group.add_option("--enable-nvgre", action="store_true",
+                      help="Enable NVGRE")
     parser.add_option_group(group)
 
     # Might need this if other parsers want command line

@@ -51,3 +51,12 @@ if config["enable_geneve"]:
     scapy.main.load_contrib("geneve")
     GENEVE = scapy.contrib.geneve.GENEVE
 
+if config["enable_mpls"]:
+    print "Mpls enabled"
+    scapy.main.load_contrib("mpls")
+    MPLS = scapy.contrib.mpls.MPLS
+
+if config["enable_nvgre"]:
+    print "Nvgre enabled"
+    scapy.main.load_contrib("nvgre")
+    NVGRE = scapy.contrib.nvgre.NVGRE
