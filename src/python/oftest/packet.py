@@ -45,6 +45,7 @@ if config["enable_erspan"]:
     print "ERSPAN enabled"
     scapy.main.load_contrib("erspan")
     ERSPAN = scapy.contrib.erspan.ERSPAN
+    ERSPAN_III = scapy.contrib.erspan.ERSPAN_III
 
 if config["enable_geneve"]:
     print "Geneve enabled"
