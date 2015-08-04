@@ -50,6 +50,31 @@ def match_exp_pkt(exp_pkt, pkt):
         p = p[:len(e)]
     return e == p
 
+def match_erspan_III_pkt(exp_pkt, pkt, ignore_tstamp=True):
+    """
+    Compare ERSPAN_III packets, ignore the timestamp value. Just make sure
+    it is non-zero
+    """
+    if ignore_tstamp:
+        erspan3 = pkt.getlayer(ERSPAN_III)
+        if erspan3 == None:
+            #self.logger.error("No ERSPAN pkt received")
+            return False
+
+        if erspan3.timestamp == 0:
+            #self.logger.error("Invalid ERSPAN timestamp")
+            return False
+
+        #fix the exp_pkt timestamp and compare
+        exp_erspan3 = exp_pkt.getlayer(ERSPAN_III)
+        if erspan3 == None:
+            #self.logger.error("Test user error - exp_pkt is not ERSPAN_III packet")
+            return False
+
+        exp_erspan3.timestamp = 0
+        erspan3.timestamp = 0
+
+    return match_exp_pkt(exp_pkt, pkt)
 
 class DataPlanePort:
     """
