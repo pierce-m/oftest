@@ -27,6 +27,11 @@ import ofutils
 import netutils
 from pcap_writer import PcapWriter
 
+if "linux" in sys.platform:
+    import afpacket
+else:
+    import pcap
+
 have_pypcap = False
 # See Jira issue TSW-13
 #try:
@@ -75,6 +80,64 @@ def match_erspan_III_pkt(exp_pkt, pkt, ignore_tstamp=True):
         erspan3.timestamp = 0
 
     return match_exp_pkt(exp_pkt, pkt)
+
+class DataPlanePortLinux:
+    """
+    Uses raw sockets to capture and send packets on a network interface.
+    """
+
+    RCV_SIZE_DEFAULT = 4096
+    ETH_P_ALL = 0x03
+    RCV_TIMEOUT = 10000
+
+    def __init__(self, interface_name, port_number):
+        """
+        @param interface_name The name of the physical interface like eth1
+        """
+        self.interface_name = interface_name
+        self.socket = socket.socket(socket.AF_PACKET, socket.SOCK_RAW, 0)
+        afpacket.enable_auxdata(self.socket)
+        self.socket.bind((interface_name, self.ETH_P_ALL))
+        netutils.set_promisc(self.socket, interface_name)
+        self.socket.settimeout(self.RCV_TIMEOUT)
+
+    def __del__(self):
+        if self.socket:
+            self.socket.close()
+
+    def fileno(self):
+        """
+        Return an integer file descriptor that can be passed to select(2).
+        """
+        return self.socket.fileno()
+
+    def recv(self):
+        """
+        Receive a packet from this port.
+        @retval (packet data, timestamp)
+        """
+        pkt = afpacket.recv(self.socket, self.RCV_SIZE_DEFAULT)
+        return (pkt, time.time())
+
+    def send(self, packet):
+        """
+        Send a packet out this port.
+        @param packet The packet data to send to the port
+        @retval The number of bytes sent
+        """
+        return self.socket.send(packet)
+
+    def down(self):
+        """
+        Bring the physical link down.
+        """
+        os.system("ifconfig down %s" % self.interface_name)
+
+    def up(self):
+        """
+        Bring the physical link up.
+        """
+        os.system("ifconfig up %s" % self.interface_name)
 
 class DataPlanePort:
     """
@@ -133,7 +196,6 @@ class DataPlanePort:
         Bring the physical link up.
         """
         os.system("ifconfig up %s" % self.interface_name)
-
 
 class DataPlanePortPcap:
     """
@@ -211,6 +273,8 @@ class DataPlane(Thread):
         #
         if "dataplane" in self.config and "portclass" in self.config["dataplane"]:
             self.dppclass = self.config["dataplane"]["portclass"]
+        elif "linux" in sys.platform:
+            self.dppclass = DataPlanePortLinux
         elif have_pypcap:
             self.dppclass = DataPlanePortPcap
         else:
